@@ -1,10 +1,10 @@
 ##################################################
-# Random tree - plots with MNIST data
+# Random tree - test Rcpp version with MNIST data
 # Ville Hyvönen
 # HIIT
 # ville.o.hyvonen@helsinki.fi 
-# 7.7.2015
-# implemented with RStudio using R version 3.2.0 
+# 14.10.2015
+# RStudio with R 3.2.1 
 
 # install.packages("Rcpp")
 # install.packages("microbenchmark")
@@ -28,5 +28,5 @@ X_test <- X_mnist[-x_idx,]
 n_0 <- 8
 
 sourceCpp('../source/tree.cpp')
-a <- buildTree(x, n_0, 2)
+a <- grow_tree(x, n_0, 1)
 
