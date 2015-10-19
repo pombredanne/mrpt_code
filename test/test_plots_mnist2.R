@@ -31,6 +31,13 @@ system.time(rp3 <- build_contours_power2(X_test, min_S=3, max_S=max_S, min_leaf=
 # make queries for x test points
 system.time(tmt_old <- test_contours(x, X_test, rp3, k))
 
+# build contours of trees for data set X_test
+system.time(rp4 <- build_contours_power2(X_test, min_S=3, max_S=max_S, min_leaf=3))
+
+# make queries for x test points
+system.time(tmt <- test_contours(x, X_test, rp4, k))
+
+
 
 # build contours of trees for data set X_test
 source('../alt_source/tree_matrix_same_pool.R')
@@ -50,7 +57,7 @@ tmt <- tmt_PCA
 
 
 # build contours of trees for data set X_test
-source('tree_matrix_same2.R')
+source('../source/tree_matrix_same2.R')
 system.time(rp_old <- build_contours_power2(X_test, min_S=3, max_S=max_S, min_leaf=3))
 
 # make queries for x test points

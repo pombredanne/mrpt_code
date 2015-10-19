@@ -21,9 +21,8 @@ if(!exists('POSSIBLE_SEEDS')) POSSIBLE_SEEDS <- 1:10e6
 # data = data set from which nearest neighbors are searched
 # n_stop = maximum leaf size, building of branch is stopped, when it has <= n_stop points
 # split_type = not implemented yet
-build_tree <- function(data, n_stop, projected_data, n_tree) {
-  n_sim <- nrow(data)
-  dim <- ncol(data)
+build_tree <- function(projected_data, dim, n_stop, n_tree) {
+  n_sim <- nrow(projected_data)
   depth <- ceiling(log2(n_sim/n_stop))
   first_idx <- (n_tree - 1) * depth + 1
   random_indices <- first_idx:(first_idx + depth - 1)
@@ -83,7 +82,7 @@ build_multiple_trees <- function(data, n_stop, n_trees=1, save_vectors, n_pool=N
   projected_data <- data %*% random_matrix
   
   for(i in 1:n_trees) 
-    trees[[i]] <- build_tree(data, n_stop, projected_data, n_tree = i)
+    trees[[i]] <- build_tree(projected_data, dim, n_stop, n_tree = i)
   
   if(save_vectors) {
     trees[[1]]$random_matrix <- random_matrix

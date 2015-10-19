@@ -27,6 +27,17 @@ X_test <- X_mnist[-x_idx,]
 # set parameters
 n_0 <- 8
 
+x <- X_test
+# generate random matrix and compute projected data
+n <- nrow(x)
+dim <- ncol(x)
+depth <- ceiling(log2(n/n_0))
+n_pool <- depth  
+set.seed(667)
+random_matrix <- matrix(rnorm(n = dim * n_pool), nrow = dim)
+projected_data <- x %*% random_matrix
+
 sourceCpp('../source/tree.cpp')
-a <- grow_tree(x, n_0, 1)
+a <- grow_tree(projected_data, dim, n_0, 1)
+
 
