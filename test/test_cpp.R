@@ -38,6 +38,13 @@ random_matrix <- matrix(rnorm(n = dim * n_pool), nrow = dim)
 projected_data <- x %*% random_matrix
 
 sourceCpp('../source/tree.cpp')
-a <- grow_tree(projected_data, dim, n_0, 1)
+test(projected_data, dim, n_0, 1, print_tr = F)
 
+
+
+sourceCpp('../test/testia.cpp')
+struct_test()
+
+# test different ways of converting R matrix into arma::mat
+microbenchmark(test_nm(X_mnist), test_arma(X_mnist), test_const_arma(X_mnist))
 
