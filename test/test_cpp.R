@@ -20,14 +20,14 @@ source('../test_code/loadmnist.R')
 mnist <- loadmnist()
 X_mnist <- mnist$X[1:(2^12+100), ]
 x_idx <- 1:100
-x <- X_mnist[x_idx,]
-n_points <- nrow(x)
+test_points <- X_mnist[x_idx,]
 X_test <- X_mnist[-x_idx,]
 
 # set parameters
 n_0 <- 8
 
 x <- X_test
+
 # generate random matrix and compute projected data
 n <- nrow(x)
 dim <- ncol(x)
@@ -36,26 +36,33 @@ n_pool <- depth
 set.seed(667)
 random_matrix <- matrix(rnorm(n = dim * n_pool), nrow = dim)
 projected_data <- x %*% random_matrix
+projected_query <- test_points %*% random_matrix
 
 sourceCpp('../source/tree.cpp')
-test(projected_data, n_0, 1, print_tr = T)
-
+res <- test(x, 2, n_0, print_tr = F, t(projected_query))
+str(res)
 
 sourceCpp('../test/testia.cpp')
-x <- sample(1:100, 10)
-arma_test(x)
 
-arma_ref_test(x)
-x
+a <- 1
+while((a <- a + 1)  < 5)
+  print(a)
 
-rcpp_test(x)
-x
 
-X <- matrix(sample(1:100, 12), ncol=3)
-arma_test_mat(X)
+noppa <- function(n) {
+  dice7 <- 1:n
+  while(length(dice7) > 1) {
+    mask_dice7 <- rep(TRUE, length(dice7))
+    for(i in 1:length(dice7))
+      while((dice5 <- sample(1:5, 1)) != 3)
+        if(dice5 < 3)
+          mask_dice7[i] <- FALSE;
+        if (sum(mask_dice7)) dice7 <- dice7[mask_dice7]    
+  }
+  dice7
+}
+        
 
-test_tracking_class(10)
 
-# test different ways of converting R matrix into arma::mat
-microbenchmark(test_nm(X_mnist), test_arma(X_mnist), test_const_arma(X_mnist))
-
+table(replicate(1e4, noppa(7)))
+table(sample(1:7, 1e4, replace = T))

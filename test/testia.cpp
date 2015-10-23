@@ -194,5 +194,14 @@ void test_tracking_class(int n) {
   std::cout << "pre-increment (by ref): fibonacci(" << n << "): " << t.getValue() <<  std::endl;
   incrementRef(t);
   std::cout << "post-increment: fibonacci(" << n << "): " << t.getValue() <<  std::endl;
-
 }
+
+// [[Rcpp::export]]
+void riihimaki() {
+  int luku = 5;
+
+  while(luku < 15) {
+    std::cout << luku++ << std::endl;
+  }
+} 
+
