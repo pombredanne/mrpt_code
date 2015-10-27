@@ -25,8 +25,9 @@ build_contour <- function(X_test, n_trees, n_0, save_vectors, n_pool) {
   res$growing_times <- numeric()
   for(i in seq_along(n_trees)) {
     res$growing_times[i] <- system.time(res$trees[[i]] <- build_multiple_trees(X_test, n_stop = n_0[i], n_trees = n_trees[i], save_vectors, n_pool))['elapsed']
-    cat('iteration: ', i, '\n')
+    cat('n_trees: ', n_trees[i], ', n_0: ', n_0[i], '\n', sep='')
   }
+  cat('\n')
   res$n_trees <- n_trees
   res$n_0 <- n_0
   res$n_pool <- n_pool
@@ -35,8 +36,8 @@ build_contour <- function(X_test, n_trees, n_0, save_vectors, n_pool) {
 
 # build contours of mrpts with S_max = 2^min_trees, ... , 2^max_trees
 # X_test = data set, rows are observations
-# min_trees = log_2 of minimum search space size
-# max_trees = log_2 of maximum search space size
+# min_S = log_2 of minimum search space size
+# max_S = log_2 of maximum search space size
 # min_leaf = smallest minimum leaf size n_0 used
 build_contours_power2 <- function(X_test, min_S, max_S, min_leaf = 0, save_vectors = TRUE, n_pool='full')
   lapply(min_S:max_S, function(i) build_contour(X_test, 2^(0:(i-min_leaf)), 2^(i:min_leaf), save_vectors, n_pool))

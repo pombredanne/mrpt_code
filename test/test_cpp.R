@@ -15,54 +15,61 @@ library(microbenchmark)
 library(RcppArmadillo)
 
 source('../test_code/loadmnist.R')
+source('../source/knn.R')
+source('../test_code/test_code.R')
+source('../test_code/test_code_plot2.R')
+
 
 # load mnist data
 mnist <- loadmnist()
 X_mnist <- mnist$X[1:(2^12+100), ]
 x_idx <- 1:100
-test_points <- X_mnist[x_idx,]
+x <- X_mnist[x_idx,]
 X_test <- X_mnist[-x_idx,]
 
 # set parameters
 n_0 <- 8
-
-x <- X_test
-
-# generate random matrix and compute projected data
-n <- nrow(x)
-dim <- ncol(x)
-depth <- ceiling(log2(n/n_0))
-n_pool <- depth  
+k <- 8
 set.seed(667)
-random_matrix <- matrix(rnorm(n = dim * n_pool), nrow = dim)
-projected_data <- x %*% random_matrix
-projected_query <- test_points %*% random_matrix
+min_S <- 3
+max_S <- 9
+min_leaf <- 3
 
+# build contours of trees for data set X_test
+system.time(rp3 <- build_contours_power2(X_test, min_S=min_S, max_S=max_S, min_leaf=min_leaf))
+
+# make queries for x test points
+system.time(tmt_old <- test_contours(x, X_test, rp3, k))
+
+# test C++ version
 sourceCpp('../source/tree.cpp')
-res <- test(x, 2, n_0, print_tr = F, t(projected_query))
-str(res)
+test_contoursCpp(X_test, min_S, max_S, min_leaf)
+
+
+
+res <- test(X_test, 16, n_0, test_points, k)
+res
+
+
+
+
+# plot knn found against #trees T with different search space sizes 
+plot(tmt)
+plot(tmt_old)
+
+
+
+# knn-searchin nopeuden testailua
+X_test_t <- t(X_test)
+x_1_t <- t(test_points[1,])
+knn(X_test, test_points[1, ], k = 8)
+knnCpp(X_test, test_points[1, ], k = 8)
+knnCppT(X_test_t, x_1_t, k = 8)
+
+# almost 4 times faster to go through the matrix by cols than rows!
+microbenchmark(knn(X_test, test_points[1, ], k = 8), knnCpp(X_test, test_points[1, ], k = 8), knnCppT(X_test_t, x_1_t, k = 8)) 
+
+
 
 sourceCpp('../test/testia.cpp')
 
-a <- 1
-while((a <- a + 1)  < 5)
-  print(a)
-
-
-noppa <- function(n) {
-  dice7 <- 1:n
-  while(length(dice7) > 1) {
-    mask_dice7 <- rep(TRUE, length(dice7))
-    for(i in 1:length(dice7))
-      while((dice5 <- sample(1:5, 1)) != 3)
-        if(dice5 < 3)
-          mask_dice7[i] <- FALSE;
-        if (sum(mask_dice7)) dice7 <- dice7[mask_dice7]    
-  }
-  dice7
-}
-        
-
-
-table(replicate(1e4, noppa(7)))
-table(sample(1:7, 1e4, replace = T))

@@ -14,6 +14,60 @@ using namespace arma;
 // [[Rcpp::plugins(cpp11)]]
 
 
+// find k nearest neighbors from data for the query point
+// X = data matrix, row = data point, col = dimension
+// q = query point as a row matrix
+// k = number of neighbors searched for
+// return : indices of nearest neighbors in data matrix X as a column vector
+// [[Rcpp::export]]
+uvec knnCpp_indices(const mat& X, const rowvec& q, uword k, uvec indices) {
+  // std::cout << "q.head(5): " << q.head(5);
+  int n_rows = indices.size();
+  // std::cout << "n_rows: " << n_rows << std::endl;
+  vec distances = vec(n_rows);
+  for(int i = 0; i < n_rows; i++)
+    distances[i] = sum(pow((X.row(indices(i)) - q), 2));
+  
+  uvec sorted_indices = indices(sort_index(distances));
+  // std::cout << "sorted_indices:\n" << sorted_indices; 
+  return sorted_indices.size() > k ? sorted_indices.head(k) + 1 : sorted_indices;
+}
+
+
+// find k nearest neighbors from data for the query point
+// X = data matrix, row = data point, col = dimension
+// q = query point as a row matrix
+// k = number of neighbors searched for
+// return : indices of nearest neighbors in data matrix X as a column vector
+// [[Rcpp::export]]
+uvec knnCpp(const mat& X, const rowvec& q, int k) {
+  int n_rows = X.n_rows;
+  vec distances = vec(n_rows);
+  for(int i = 0; i < n_rows; i++)
+    distances[i] = sum(pow((X.row(i) - q), 2));
+  
+  uvec sorted_indices = sort_index(distances);
+  return sorted_indices.head(k) + 1;
+}
+
+
+// find k nearest neighbors from data for the query point
+// X = *transposed* data matrix, row = dimension, col = data point
+// q = query point as a column matrix
+// k = number of neighbors searched for
+// return : indices of nearest neighbors (cols of transposed data matrix X) as a column vector
+// [[Rcpp::export]]
+uvec knnCppT(const mat& X, const vec& q, int k) {
+  int n_cols = X.n_cols;
+  vec distances = vec(n_cols);
+  for(int i = 0; i < n_cols; i++)
+    distances[i] = sum(pow((X.col(i) - q), 2));
+  
+  uvec sorted_indices = sort_index(distances);
+  return sorted_indices.subvec(0, k - 1) + 1;
+}
+
+
 // Node of an RP-tree
 class Node {
 private:
@@ -73,7 +127,7 @@ public:
   // Query in a RP-tree
   // projected_query = the query point projected into all vectors of in all the RP-trees
   // return : label of the leaf the query point is routed into in this RP-tree
-  int query(const vec& projected_query) {
+  int query(const rowvec& projected_query) {
     Node* node = tree;
     int i = first_idx;
     
@@ -147,11 +201,13 @@ public:
     dim = X.n_cols;
     depth = ceil(log2(n_rows / n_0));
     n_pool = n_trees * depth;
+    trees = nullptr;
   }
   
   ~Mrpt() {
-    for(int i = 0; i < n_trees; i++)
-      delete trees[i];
+    if(trees)
+      for(int i = 0; i < n_trees; i++)
+        delete trees[i];
     delete[] trees;
   }
   
@@ -167,24 +223,32 @@ public:
   }
   
   
-  std::unordered_set<int> query(const vec& q) {  
-    mat projected_query = q * random_matrix;  // query vector q is passed as a reference to row vector
+  uvec query(const rowvec& q, int k) { 
+    // std::cout << "q.head(5): "<< q.head(5);
+    rowvec projected_query = q * random_matrix;  // query vector q is passed as a reference to row vector
     std::unordered_set<int> idx_canditates;
+    // std::cout << "projected_query.head(5): "<< projected_query.head(5);
+    
     
     for(int i = 0; i < n_trees; i++) {
       uvec leaf_labels = trees[i]->get_leaf_labels();
       uword query_label = trees[i]->query(projected_query);
-      uvec idx_one_tree =  leaf_labels(find(leaf_labels == query_label)); 
+      
+      // std::cout << "leaf_labels.head(5):\n" << leaf_labels.head(5);
+      // std::cout << "query_label: "<< query_label << std::endl;
+      
+      uvec idx_one_tree =  find(leaf_labels == query_label);
+      // std::cout << "i: " << i << ", idx_one_tree:\n" << idx_one_tree << std::endl;
       idx_canditates.insert(idx_one_tree.begin(), idx_one_tree.end());
     }
     
-    return idx_canditates;
-    
-    
-    
-
+    std::vector<int> idx_vector(idx_canditates.begin(), idx_canditates.end());
+    // std::cout << "idx_canditates.size(): " << idx_canditates.size() << std::endl;
+    // std::cout << "idx_vector.size(): " << idx_vector.size() << std::endl;
+    return knnCpp_indices(X, q, k, conv_to<uvec>::from(idx_vector));
   }
-  
+
+    
   RP_tree** get_trees() {
     return trees;
   }
@@ -201,45 +265,160 @@ private:
   mat random_matrix;    // random vectors needed for all the RP-trees
   mat projected_data;   // data matrix projected onto all the random vectors
   RP_tree** trees;      // all the RP-trees
-  };
+};
+
+class Contour {
+public:
+  Contour(const mat& X_, uvec n_trees_, uvec n_0_) : X(X_), n_trees(n_trees_), n_0(n_0_) {
+    n_mrpts = n_trees.size();
+    mrpts = nullptr;
+  }
+  
+  ~Contour() {
+    if(mrpts)
+      for(int i = 0; i < n_mrpts; i++)
+        delete mrpts[i];
+    delete[] mrpts;
+  }
+  
+  void grow() {
+    mrpts = new Mrpt*[n_mrpts];
+    for(int i = 0; i < n_mrpts; i++) {
+      std::cout << "n_trees: " << n_trees[i] << ", n_0: " << n_0[i] << std::endl;
+      mrpts[i] = new Mrpt(X, n_trees[i], n_0[i]);
+      mrpts[i]->grow();
+     }
+    
+    std::cout << std::endl;
+  }
+  
+  void query(const mat& Q, int k, umat true_knn) {
+    int n_points = Q.n_rows;
+    nn_found = zeros<vec>(n_mrpts);
+    // n_search_space = zeros<vec>(n_mrpts);
+    std::vector<uvec> approximate_knn(n_points);
+    
+    for(int i = 0; i < n_mrpts; i++) {
+      Mrpt* mrpt = mrpts[i];
+      
+      for(int j = 0; j < n_points; j++) 
+        approximate_knn[j] = mrpt->query(Q.row(j), k);
+
+      for(int j = 0; j < n_points; j++) {
+        int n_knn = approximate_knn[j].size();
+        
+        for(int l = 0; l < n_knn; l++)
+          if(any(true_knn.row(i) == approximate_knn[i][l]))
+            nn_found[i]++;
+      }
+    }
+    
+    nn_found /= n_points;
+    
+  }
+  
+private:
+  const mat& X;  // original data matrix
+  int n_mrpts;   // number of Mrpt:s
+  uvec n_trees;  // vector of number of trees
+  uvec n_0;      // vector of maximum leaf sizes
+  Mrpt** mrpts;  // all the Mrpt:s
+  vec nn_found;
+  // vec n_search_space;
+};
 
 
+class Contours {
+public:
+  Contours(const mat& X_, int n_contours_, std::vector<uvec> n_trees_, std::vector<uvec> n_0_) :
+  X(X_), n_contours(n_contours_), n_trees(n_trees_), n_0(n_0_) {
+    contours = nullptr;
+  }
+  
+  
+  // min_S = log_2 of minimum search space size
+  // max_S = log_2 of maximum search space size
+  // min_leaf = smallest minimum leaf size n_0 used
 
-uvec knn(const vec& q, const mat& X, int k) {
-  int n_rows = X.n_rows;
-  int dim = X.n_cols;
-  vec distances = vec(n_rows);
-  for(int i = 0; i < n_rows; i++)
-    distances[i] = sum(pow((X.row(i) - q), 2));
+  Contours(const mat& X_, int min_S, int max_S, int min_leaf) : X(X_) {
+    contours = nullptr;
+    n_contours = max_S - min_S + 1;
+    n_trees = std::vector<uvec>(n_contours);
+    n_0 = std::vector<uvec>(n_contours);
+    for(int i = min_S; i <= max_S; i++) {
+      uvec temp(i - min_leaf + 1);
+      for(int j = 0; j <= i - min_leaf; j++)
+        temp[j] = pow(2, j);
+      n_trees[i - min_S] = temp; 
+      
+      int c = 0;
+      for(int j = i; j >= min_leaf; j--) 
+        temp[c++] = pow(2, j);
+      n_0[i - min_S] = temp;
+      
+     // std::cout << "i: " << i << ", n_trees[i - min_S]:\n" << n_trees[i - min_S];
+     // std::cout << "i: " << i << ", n_0[i - min_S]:\n" << n_0[i - min_S];
+     
+    }
+  }
+  
+  ~Contours() {
+    if(contours)
+      for(int i = 0; i < n_contours; i++)
+        delete contours[i];
+    delete[] contours;
+  }
+  
+  void grow() {
+    contours = new Contour*[n_contours];
+    for(int i = 0; i < n_contours; i++) {
+      contours[i] = new Contour(X, n_trees[i], n_0[i]);
+      contours[i]->grow();
+    }
+  }
+  
+  
+  
+private:
+  const mat& X;  // original data matrix
+  int n_contours;
+  std::vector<uvec> n_trees;  // vector of number of trees
+  std::vector<uvec> n_0;      // vector of maximum leaf sizes
+  Contour** contours;  // all the Contours:s
+};
 
-  uvec sorted_indices = sort_index(distances);
-  return sorted_indices.subvec(1, k);
-}
 
 
 // [[Rcpp::export]]
-Rcpp::List test(const mat& X, int n_trees, int n_0, bool print_tr, const mat& test_points) {
+Rcpp::List test(const mat& X, int n_trees, int n_0, const mat& test_points, int k) {
   Mrpt* mrpt = new Mrpt(X, n_trees, n_0);
   mrpt->grow();
-  if(print_tr) for(int i = 0; i < n_trees; i++) RP_tree::print(mrpt->get_trees()[i]->get_tree());
+  // if(print_tr) for(int i = 0; i < n_trees; i++) RP_tree::print(mrpt->get_trees()[i]->get_tree());
   
-  RP_tree* tree = mrpt->get_trees()[0];
-  uvec clusters = tree->get_leaf_labels();
-  int n_test = test_points.n_cols;
-  uvec query_results(n_test);
+  int n_test = test_points.n_rows;
+  umat query_results(k, n_test);
   
   for(int i = 0; i < n_test; i++){
-    std::cout << "i: " << i << std::endl;
-    query_results[i] = tree->query(test_points.col(i).t());
+    // std::cout << "i: " << i << std::endl;
+    query_results.col(i) = mrpt->query(test_points.row(i), k);
   }
+  
+  Rcpp::List res = Rcpp::List::create(Rcpp::_["query_results"] = query_results);
 
-  Rcpp::List res = Rcpp::List::create(
-    Rcpp::_["leaf_labels"] = tree->get_leaf_labels(), 
-    Rcpp::_["query_results"] = query_results
-  );
-
-  delete tree;
+  delete mrpt;
+  mrpt = nullptr;
   return res;
 }
 
 
+// [[Rcpp::export]]
+void test_contoursCpp(const mat& X, int min_S, int max_S, int min_leaf) {
+  std::cout << "Nyt mennaan!" << std::endl;
+  Contours* contours = new Contours(X, min_S, max_S, min_leaf);
+  contours->grow();
+  std::cout << "Puut rakennettu." << std::endl;
+  
+  delete contours;
+  contours = nullptr;
+  std::cout << "Puut poistettu." << std::endl;
+}
