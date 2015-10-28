@@ -21,8 +21,9 @@ source('../test_code/test_code_plot2.R')
 
 
 # load mnist data
+n_train <- 2^12
 mnist <- loadmnist()
-X_mnist <- mnist$X[1:(2^12+100), ]
+X_mnist <- mnist$X[1:(n_train + 100), ]
 x_idx <- 1:100
 x <- X_mnist[x_idx,]
 X_test <- X_mnist[-x_idx,]
@@ -43,31 +44,31 @@ system.time(tmt_old <- test_contours(x, X_test, rp3, k))
 
 # test C++ version
 sourceCpp('../source/tree.cpp')
-test_contoursCpp(X_test, min_S, max_S, min_leaf)
-
-
-
-res <- test(X_test, 16, n_0, test_points, k)
-res
-
-
-
+tmt <- test_contoursCpp(X_test, min_S, max_S, min_leaf, x, k)
 
 # plot knn found against #trees T with different search space sizes 
 plot(tmt)
 plot(tmt_old)
 
+plot(tmt_old, times = T)
+plot(tmt, times = T)
 
+plot(tmt_old, growing_times = T)
+plot(tmt, growing_times = T)
+
+
+tmt_old[[7]]
+tmt[[7]]
 
 # knn-searchin nopeuden testailua
 X_test_t <- t(X_test)
-x_1_t <- t(test_points[1,])
-knn(X_test, test_points[1, ], k = 8)
-knnCpp(X_test, test_points[1, ], k = 8)
+x_1_t <- t(x[1,])
+knn(X_test, x[1, ], k = 8)
+knnCpp(X_test, x[1, ], k = 8)
 knnCppT(X_test_t, x_1_t, k = 8)
 
 # almost 4 times faster to go through the matrix by cols than rows!
-microbenchmark(knn(X_test, test_points[1, ], k = 8), knnCpp(X_test, test_points[1, ], k = 8), knnCppT(X_test_t, x_1_t, k = 8)) 
+microbenchmark(knn(X_test, x[1, ], k = 8), knnCpp(X_test, x[1, ], k = 8), knnCppT(X_test_t, x_1_t, k = 8)) 
 
 
 

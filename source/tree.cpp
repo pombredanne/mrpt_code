@@ -9,6 +9,7 @@
 #include <RcppArmadillo.h>
 #include <array>
 #include <unordered_set>
+#include <ctime>
 using namespace arma;
 // [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::plugins(cpp11)]]
@@ -283,38 +284,68 @@ public:
   
   void grow() {
     mrpts = new Mrpt*[n_mrpts];
+    growing_times = std::vector<double>(n_mrpts);
+    
     for(int i = 0; i < n_mrpts; i++) {
       std::cout << "n_trees: " << n_trees[i] << ", n_0: " << n_0[i] << std::endl;
+      
+      clock_t begin = clock();
       mrpts[i] = new Mrpt(X, n_trees[i], n_0[i]);
       mrpts[i]->grow();
+      clock_t end = clock();
+      
+      growing_times[i] = (end - begin) / static_cast<double>(CLOCKS_PER_SEC);
      }
     
     std::cout << std::endl;
   }
   
-  void query(const mat& Q, int k, umat true_knn) {
-    int n_points = Q.n_rows;
+  void query(const mat& Q, int k_, umat true_knn) {
+    k = k_;
+    n_points = Q.n_rows;
     nn_found = zeros<vec>(n_mrpts);
     // n_search_space = zeros<vec>(n_mrpts);
     std::vector<uvec> approximate_knn(n_points);
+    times_query = std::vector<double>(n_mrpts);
     
     for(int i = 0; i < n_mrpts; i++) {
       Mrpt* mrpt = mrpts[i];
       
+      clock_t begin = clock();
       for(int j = 0; j < n_points; j++) 
         approximate_knn[j] = mrpt->query(Q.row(j), k);
-
+      clock_t end = clock();
+      times_query[i] = (end - begin) / static_cast<double>(CLOCKS_PER_SEC);
+      
       for(int j = 0; j < n_points; j++) {
         int n_knn = approximate_knn[j].size();
         
         for(int l = 0; l < n_knn; l++)
-          if(any(true_knn.row(i) == approximate_knn[i][l]))
+          if(any(true_knn.col(j) == approximate_knn[j][l]))
             nn_found[i]++;
       }
     }
     
     nn_found /= n_points;
     
+  }
+  
+  
+  Rcpp::List results(double time_exact) {
+    Rcpp::List ret = Rcpp::List::create(
+      Rcpp::_["nn_found"] = std::vector<double>(nn_found.begin(), nn_found.end()),
+      Rcpp::_["k"] = k,
+      Rcpp::_["n_trees"] = std::vector<int>(n_trees.begin(), n_trees.end()),
+      Rcpp::_["n_0"] = std::vector<int>(n_0.begin(), n_0.end()),
+      Rcpp::_["times_knn"] = std::vector<double>(n_mrpts, 0.0),
+      Rcpp::_["times_query"] = times_query,
+      Rcpp::_["growing_times"] = growing_times,
+      Rcpp::_["time_exact"] = time_exact,
+      Rcpp::_["n_points"] = n_points
+    );
+    ret.attr("class") = "contour"; 
+    
+    return ret;
   }
   
 private:
@@ -325,6 +356,10 @@ private:
   Mrpt** mrpts;  // all the Mrpt:s
   vec nn_found;
   // vec n_search_space;
+  int k;
+  std::vector<double> times_query;
+  std::vector<double> growing_times;
+  int n_points;
 };
 
 
@@ -377,6 +412,31 @@ public:
     }
   }
   
+  void query(const mat& Q, int k) {
+    int n_points = Q.n_rows;
+    umat true_knn(k, n_points);
+    
+    clock_t begin = clock();
+    for(int i = 0; i < n_points; i++)
+      true_knn.col(i) = knnCpp(X, Q.row(i), k);
+    clock_t end = clock();
+    time_exact = (end - begin) / static_cast<double>(CLOCKS_PER_SEC);
+    
+    for(int i = 0; i < n_contours; i++)
+      contours[i]->query(Q, k, true_knn);
+    }
+  
+  Rcpp::List results() {
+    Rcpp::List ret(n_contours);
+    
+    for(int i = 0; i < n_contours; i++) 
+      ret[i] = contours[i]->results(time_exact);
+    
+    ret.attr("class") = "mrpts";
+    
+    return ret;
+  }
+  
   
   
 private:
@@ -384,7 +444,8 @@ private:
   int n_contours;
   std::vector<uvec> n_trees;  // vector of number of trees
   std::vector<uvec> n_0;      // vector of maximum leaf sizes
-  Contour** contours;  // all the Contours:s
+  Contour** contours;  // all the Contours
+  double time_exact;   // time it takes to do exact knn search for n_points points
 };
 
 
@@ -412,13 +473,22 @@ Rcpp::List test(const mat& X, int n_trees, int n_0, const mat& test_points, int 
 
 
 // [[Rcpp::export]]
-void test_contoursCpp(const mat& X, int min_S, int max_S, int min_leaf) {
+Rcpp::List test_contoursCpp(const mat& X, int min_S, int max_S, int min_leaf, const mat& Q, int k) {
+  
   std::cout << "Nyt mennaan!" << std::endl;
   Contours* contours = new Contours(X, min_S, max_S, min_leaf);
   contours->grow();
   std::cout << "Puut rakennettu." << std::endl;
   
+  contours->query(Q, k);
+  std::cout << "Kysely tehty" << std::endl;
+  
+  Rcpp::List ret = contours->results();
+  std::cout << "Tulokset haettu" << std::endl;
+  
   delete contours;
   contours = nullptr;
   std::cout << "Puut poistettu." << std::endl;
+  
+  return ret;
 }
