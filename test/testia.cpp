@@ -196,12 +196,21 @@ void test_tracking_class(int n) {
   std::cout << "post-increment: fibonacci(" << n << "): " << t.getValue() <<  std::endl;
 }
 
-// [[Rcpp::export]]
-void riihimaki() {
-  int luku = 5;
 
-  while(luku < 15) {
-    std::cout << luku++ << std::endl;
-  }
-} 
+// [[Rcpp::export]]
+void safe(const arma::mat& X, const arma::rowvec& z) {
+  int dim = X.n_cols;
+  for(int i = 0; i < dim; i++)
+    arma::vec x = X.col(i);
+}
+
+
+// [[Rcpp::export]]
+void unsafe(const arma::mat& X, const arma::rowvec& z) {
+  int dim = X.n_cols;
+  for(int i = 0; i < dim; i++)
+    arma::vec x = X.unsafe_col(i);
+}
+
+
 

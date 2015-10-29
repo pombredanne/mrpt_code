@@ -79,39 +79,14 @@ plot(tmt, times=T, per_point = T, xlim=c(0,11), exact=T)
 plot(tmt, growing_times=T, xlim=c(0,2000))
 plot(tmt_old, growing_times=T)
 
-# compare accuracy of the original and the same projection version
-for(i in 1:length(tmt)) {
-  cat("orig: ", tmt_old[[i]]$nn_found, '\n')
-  cat("same: ", tmt[[i]]$nn_found, '\n')
-}
-
-# ratio of query times of the original and the same projection version
-for(i in 1:length(tmt)) 
-  cat("ratio (old/new): ", (tmt_old[[i]]$times_query + tmt_old[[i]]$times_knn) / (tmt[[i]]$times_query + tmt[[i]]$times_knn), '\n')
 
 
-# ratio of growing times of the original and the same projection version
-for(i in 1:length(tmt)) 
-  cat("ratio (old/new): ", tmt_old[[i]]$growing_times / tmt[[i]]$growing_times, '\n')
-
-
-# compare query times of the original and the same projection version
-for(i in 1:length(tmt)) {
-  cat("orig: ", (tmt_old[[i]]$times_query + tmt_old[[i]]$times_knn) / tmt_old[[1]]$n_points, '\n')
-  cat("same: ", (tmt[[i]]$times_query + tmt[[i]]$times_knn) / tmt[[1]]$n_points, '\n')
-}
 
 
 # compare tree traversal times of the original and the same projection version
 for(i in 1:length(tmt)) {
   cat("orig: ", tmt_old[[i]]$times_query, '\n')
   cat("same: ", tmt[[i]]$times_query, '\n')
-}
-
-# compare growing times of the original and the same projection version
-for(i in 1:length(tmt)) {
-  cat("orig: ", tmt_old[[i]]$growing_times, '\n')
-  cat("same: ", tmt[[i]]$growing_times, '\n')
 }
 
 ##################################################

@@ -120,6 +120,66 @@ test_mrpt <- function(x, X_test, mrpt, k, exact_nn) {
        times_query = times_query, n_points = n_points, per_point = (times_query + times_knn) / n_points)
 } 
 
+# compare one mrpts - object to another
+compare <- function(tmt, tmt_old, accuracy = T, times = T, time_exact = T, growing_times = T, times_ratio = T, growing_times_ratio = T ) {
+  # compare accuracy of the original and the same projection version
+  if(accuracy) {
+    cat("neighbors found:\n")
+    for(i in 1:length(tmt)) {
+      cat("orig: ", tmt_old[[i]]$nn_found, '\n')
+      cat("C++: ", tmt[[i]]$nn_found, '\n')
+    }
+    cat('\n')
+  }
+  
+  
+  # compare query times of the original and the same projection version
+  if(times) {
+    cat('query times:\n')
+    for(i in 1:length(tmt)) {
+      cat("orig: ", (tmt_old[[i]]$times_query + tmt_old[[i]]$times_knn), '\n')
+      cat("C++: ", (tmt[[i]]$times_query + tmt[[i]]$times_knn), '\n')
+    }
+    cat('\n')
+  }
+  
+  # time for exact knn search
+  if(time_exact) {
+    cat('time of exact kNN search:\n')
+    cat('orig: ', tmt_old[[1]]$time_exact, '\n')
+    cat('C++: ', tmt[[1]]$time_exact, '\n')
+    cat('\n')
+  }
+  
+  # compare growing times of the original and the same projection version
+  if(growing_times) {
+    cat('growing times:\n')
+    for(i in 1:length(tmt)) {
+      cat("orig: ", tmt_old[[i]]$growing_times, '\n')
+      cat("C++: ", tmt[[i]]$growing_times, '\n')
+    }
+    cat('\n')
+  }
+  
+  # ratio of query times of the original and the same projection version
+  if(times_ratio) {
+    cat('ratio of query times:\n')
+    for(i in 1:length(tmt)) 
+      cat("ratio (old/C++): ", (tmt_old[[i]]$times_query + tmt_old[[i]]$times_knn) / (tmt[[i]]$times_query + tmt[[i]]$times_knn), '\n')
+    cat('\n')
+  }
+  
+  
+  # ratio of growing times of the original and the same projection version
+  if(growing_times_ratio) {
+    cat('ratio of growing times:\n')
+    for(i in 1:length(tmt)) 
+      cat("ratio (old/C++): ", tmt_old[[i]]$growing_times / tmt[[i]]$growing_times, '\n')
+    cat('\n')
+  }
+  
+}
+
 
 
 

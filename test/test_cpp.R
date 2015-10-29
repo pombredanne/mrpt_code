@@ -44,21 +44,31 @@ system.time(tmt_old <- test_contours(x, X_test, rp3, k))
 
 # test C++ version
 sourceCpp('../source/tree.cpp')
-tmt <- test_contoursCpp(X_test, min_S, max_S, min_leaf, x, k)
+tmt <- test_contoursCpp(t(X_test), min_S, max_S, min_leaf, t(x), k)
+tmt_vanha <- tmt
+
 
 # plot knn found against #trees T with different search space sizes 
 plot(tmt)
 plot(tmt_old)
 
 plot(tmt_old, times = T)
-plot(tmt, times = T)
+plot(tmt, times = T, per_point = T)
 
 plot(tmt_old, growing_times = T)
 plot(tmt, growing_times = T)
 
+compare(tmt, tmt_vanha)
 
-tmt_old[[7]]
-tmt[[7]]
+
+# col():n ja unsafe_col():n vertailua
+sourceCpp('../test/testia.cpp')
+n_row <- 1e5
+dim <- 784
+Z <- matrix(rnorm(n_row * dim), nrow = n_row)
+z <- rnorm(n_row)
+microbenchmark(safe(Z, z), unsafe(Z, z))
+
 
 # knn-searchin nopeuden testailua
 X_test_t <- t(X_test)
@@ -66,11 +76,13 @@ x_1_t <- t(x[1,])
 knn(X_test, x[1, ], k = 8)
 knnCpp(X_test, x[1, ], k = 8)
 knnCppT(X_test_t, x_1_t, k = 8)
+knnCppT_unsafe(X_test_t, x_1_t, k = 8)
+
+
 
 # almost 4 times faster to go through the matrix by cols than rows!
-microbenchmark(knn(X_test, x[1, ], k = 8), knnCpp(X_test, x[1, ], k = 8), knnCppT(X_test_t, x_1_t, k = 8)) 
+microbenchmark(knn(X_test, x[1, ], k = 8), knnCpp(X_test, x[1, ], k = 8), knnCppT(X_test_t, x_1_t, k = 8), knnCppT_unsafe(X_test_t, x_1_t, k = 8)) 
 
 
 
-sourceCpp('../test/testia.cpp')
 

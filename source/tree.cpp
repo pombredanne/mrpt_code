@@ -34,6 +34,26 @@ uvec knnCpp_indices(const mat& X, const rowvec& q, uword k, uvec indices) {
   return sorted_indices.size() > k ? sorted_indices.head(k) + 1 : sorted_indices;
 }
 
+// find k nearest neighbors from data for the query point
+// X = data matrix, row = data point, col = dimension
+// q = query point as a row matrix
+// k = number of neighbors searched for
+// return : indices of nearest neighbors in data matrix X as a column vector
+// [[Rcpp::export]]
+uvec knnCpp_T_indices(const mat& X, const vec& q, uword k, uvec indices) {
+  // std::cout << "q.head(5): " << q.head(5);
+  int n_cols = indices.size();
+  // std::cout << "n_rows: " << n_rows << std::endl;
+  vec distances = vec(n_cols);
+  for(int i = 0; i < n_cols; i++)
+    distances[i] = sum(pow((X.col(indices(i)) - q), 2));
+  
+  uvec sorted_indices = indices(sort_index(distances));
+  // std::cout << "sorted_indices:\n" << sorted_indices; 
+  return sorted_indices.size() > k ? sorted_indices.head(k) + 1 : sorted_indices;
+}
+
+
 
 // find k nearest neighbors from data for the query point
 // X = data matrix, row = data point, col = dimension
@@ -68,6 +88,23 @@ uvec knnCppT(const mat& X, const vec& q, int k) {
   return sorted_indices.subvec(0, k - 1) + 1;
 }
 
+// find k nearest neighbors from data for the query point
+// X = *transposed* data matrix, row = dimension, col = data point
+// q = query point as a column matrix
+// k = number of neighbors searched for
+// return : indices of nearest neighbors (cols of transposed data matrix X) as a column vector
+// [[Rcpp::export]]
+uvec knnCppT_unsafe(const mat& X, const vec& q, int k) {
+  int n_cols = X.n_cols;
+  vec distances = vec(n_cols);
+  for(int i = 0; i < n_cols; i++)
+    distances[i] = sum(pow((X.unsafe_col(i) - q), 2));
+  
+  uvec sorted_indices = sort_index(distances);
+  return sorted_indices.subvec(0, k - 1) + 1;
+}
+
+
 
 // Node of an RP-tree
 class Node {
@@ -98,7 +135,7 @@ class RP_tree {
 
 public:
   RP_tree(const mat& projected, int n_tree, int n_stop) : projected_data(projected), current_leaf_label(1), n_0(n_stop) {
-    n_rows = projected_data.n_rows;
+    n_rows = projected_data.n_cols;  // X is transposed
     depth = ceil(log2(n_rows / n_0));
     first_idx = n_tree * depth;
     leaf_labels = zeros<uvec>(n_rows);
@@ -128,7 +165,7 @@ public:
   // Query in a RP-tree
   // projected_query = the query point projected into all vectors of in all the RP-trees
   // return : label of the leaf the query point is routed into in this RP-tree
-  int query(const rowvec& projected_query) {
+  int query(const vec& projected_query) {
     Node* node = tree;
     int i = first_idx;
     
@@ -171,9 +208,9 @@ private:
       return node;
     }
     
-    mat temp = projected_data.rows(indices);
-    vec projection = temp.col(first_idx + tree_level);
-    uvec ordered = sort_index(projection);
+    mat temp = projected_data.cols(indices);
+    rowvec projection = temp.row(first_idx + tree_level);
+    uvec ordered = sort_index(projection);  // indices??
     
     int split_point = n % 2 ? n / 2 : n / 2 - 1;  // median split
     int idx_split_point = ordered(split_point);
@@ -198,8 +235,8 @@ class Mrpt {
 public:
   
   Mrpt(const mat& X_, int n_trees_, int n_0_) : X(X_), n_trees(n_trees_), n_0(n_0_) {
-    n_rows = X.n_rows;
-    dim = X.n_cols;
+    n_rows = X.n_cols;  // X is transposed
+    dim = X.n_rows;
     depth = ceil(log2(n_rows / n_0));
     n_pool = n_trees * depth;
     trees = nullptr;
@@ -214,8 +251,10 @@ public:
   
   void grow() {
     trees = new RP_tree*[n_trees];
-    random_matrix = randn(dim, n_pool);
-    projected_data = X * random_matrix;
+    random_matrix = randn(n_pool, dim);
+    projected_data = random_matrix * X;
+    // std::cout << "n_pool: " << n_pool << ", n_rows: " << n_rows << ", dim: " << dim << std::endl;
+    // std::cout << "projected_data.n_rows: " << projected_data.n_rows << ", projected_data.n_cols: " << projected_data.n_cols << std::endl;
     
     for(int i = 0; i < n_trees; i++) {
       trees[i] = new RP_tree(projected_data, i, n_0);
@@ -224,13 +263,12 @@ public:
   }
   
   
-  uvec query(const rowvec& q, int k) { 
+  uvec query(const vec& q, int k) { 
     // std::cout << "q.head(5): "<< q.head(5);
-    rowvec projected_query = q * random_matrix;  // query vector q is passed as a reference to row vector
+    vec projected_query = random_matrix * q;   // query vector q is passed as a reference to a col vector
     std::unordered_set<int> idx_canditates;
     // std::cout << "projected_query.head(5): "<< projected_query.head(5);
-    
-    
+
     for(int i = 0; i < n_trees; i++) {
       uvec leaf_labels = trees[i]->get_leaf_labels();
       uword query_label = trees[i]->query(projected_query);
@@ -246,7 +284,7 @@ public:
     std::vector<int> idx_vector(idx_canditates.begin(), idx_canditates.end());
     // std::cout << "idx_canditates.size(): " << idx_canditates.size() << std::endl;
     // std::cout << "idx_vector.size(): " << idx_vector.size() << std::endl;
-    return knnCpp_indices(X, q, k, conv_to<uvec>::from(idx_vector));
+    return knnCpp_T_indices(X, q, k, conv_to<uvec>::from(idx_vector));
   }
 
     
@@ -256,7 +294,7 @@ public:
   
   
 private:
-  mat X;        // data matrix, row = data point, col = variable
+  mat X;        // data matrix, col = observation, row = dimension
   int n_trees;  // number of RP-trees
   int n_0;      // maximum leaf size of all the RP-trees
   int n_rows;   // sample size of data
@@ -302,7 +340,7 @@ public:
   
   void query(const mat& Q, int k_, umat true_knn) {
     k = k_;
-    n_points = Q.n_rows;
+    n_points = Q.n_cols;
     nn_found = zeros<vec>(n_mrpts);
     // n_search_space = zeros<vec>(n_mrpts);
     std::vector<uvec> approximate_knn(n_points);
@@ -313,7 +351,7 @@ public:
       
       clock_t begin = clock();
       for(int j = 0; j < n_points; j++) 
-        approximate_knn[j] = mrpt->query(Q.row(j), k);
+        approximate_knn[j] = mrpt->query(Q.col(j), k);
       clock_t end = clock();
       times_query[i] = (end - begin) / static_cast<double>(CLOCKS_PER_SEC);
       
@@ -349,17 +387,17 @@ public:
   }
   
 private:
-  const mat& X;  // original data matrix
+  const mat& X;  // original data matrix, col = observation, row = dimension
   int n_mrpts;   // number of Mrpt:s
   uvec n_trees;  // vector of number of trees
   uvec n_0;      // vector of maximum leaf sizes
   Mrpt** mrpts;  // all the Mrpt:s
-  vec nn_found;
+  vec nn_found;  // average true nearest neighbors for all the test points 
   // vec n_search_space;
-  int k;
-  std::vector<double> times_query;
-  std::vector<double> growing_times;
-  int n_points;
+  int k;         // number of nearest neighbors searched for
+  std::vector<double> times_query;    // total query times for test points
+  std::vector<double> growing_times;  // growing times for the trees
+  int n_points;  // number of test points
 };
 
 
@@ -380,6 +418,7 @@ public:
     n_contours = max_S - min_S + 1;
     n_trees = std::vector<uvec>(n_contours);
     n_0 = std::vector<uvec>(n_contours);
+    
     for(int i = min_S; i <= max_S; i++) {
       uvec temp(i - min_leaf + 1);
       for(int j = 0; j <= i - min_leaf; j++)
@@ -390,10 +429,6 @@ public:
       for(int j = i; j >= min_leaf; j--) 
         temp[c++] = pow(2, j);
       n_0[i - min_S] = temp;
-      
-     // std::cout << "i: " << i << ", n_trees[i - min_S]:\n" << n_trees[i - min_S];
-     // std::cout << "i: " << i << ", n_0[i - min_S]:\n" << n_0[i - min_S];
-     
     }
   }
   
@@ -413,14 +448,18 @@ public:
   }
   
   void query(const mat& Q, int k) {
-    int n_points = Q.n_rows;
+    int n_points = Q.n_cols;
     umat true_knn(k, n_points);
+    
+    std::cout << "Haetaan todelliset naapurit." << std::endl;
     
     clock_t begin = clock();
     for(int i = 0; i < n_points; i++)
-      true_knn.col(i) = knnCpp(X, Q.row(i), k);
+      true_knn.col(i) = knnCppT(X, Q.col(i), k);
     clock_t end = clock();
     time_exact = (end - begin) / static_cast<double>(CLOCKS_PER_SEC);
+    
+    std::cout << "Todelliset " << k << " naapuria haettu" << std::endl;
     
     for(int i = 0; i < n_contours; i++)
       contours[i]->query(Q, k, true_knn);
@@ -433,43 +472,21 @@ public:
       ret[i] = contours[i]->results(time_exact);
     
     ret.attr("class") = "mrpts";
-    
     return ret;
   }
   
   
   
 private:
-  const mat& X;  // original data matrix
-  int n_contours;
+  const mat& X;               // original data matrix, col = observation, row = dimension
+  int n_contours;             // number of Contour objects in contours
   std::vector<uvec> n_trees;  // vector of number of trees
   std::vector<uvec> n_0;      // vector of maximum leaf sizes
-  Contour** contours;  // all the Contours
-  double time_exact;   // time it takes to do exact knn search for n_points points
+  Contour** contours;         // all the Contours
+  double time_exact;          // time it takes to do exact knn search for n_points points
 };
 
 
-
-// [[Rcpp::export]]
-Rcpp::List test(const mat& X, int n_trees, int n_0, const mat& test_points, int k) {
-  Mrpt* mrpt = new Mrpt(X, n_trees, n_0);
-  mrpt->grow();
-  // if(print_tr) for(int i = 0; i < n_trees; i++) RP_tree::print(mrpt->get_trees()[i]->get_tree());
-  
-  int n_test = test_points.n_rows;
-  umat query_results(k, n_test);
-  
-  for(int i = 0; i < n_test; i++){
-    // std::cout << "i: " << i << std::endl;
-    query_results.col(i) = mrpt->query(test_points.row(i), k);
-  }
-  
-  Rcpp::List res = Rcpp::List::create(Rcpp::_["query_results"] = query_results);
-
-  delete mrpt;
-  mrpt = nullptr;
-  return res;
-}
 
 
 // [[Rcpp::export]]
