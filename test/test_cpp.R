@@ -10,6 +10,7 @@
 # install.packages("microbenchmark")
 # install.packages("RcppArmadillo")
 
+
 library(Rcpp)
 library(microbenchmark)
 library(RcppArmadillo)
@@ -40,26 +41,25 @@ min_leaf <- 3
 system.time(rp3 <- build_contours_power2(X_test, min_S=min_S, max_S=max_S, min_leaf=min_leaf))
 
 # make queries for x test points
-system.time(tmt_old <- test_contours(x, X_test, rp3, k))
+system.time(tmt_r <- test_contours(x, X_test, rp3, k))
 
 # test C++ version
 sourceCpp('../source/tree.cpp')
 tmt <- test_contoursCpp(t(X_test), min_S, max_S, min_leaf, t(x), k)
-tmt_vanha <- tmt
+
 
 
 # plot knn found against #trees T with different search space sizes 
 plot(tmt)
 plot(tmt_old)
 
-plot(tmt_old, times = T)
 plot(tmt, times = T, per_point = T)
+plot(tmt_old, times = T)
 
 plot(tmt_old, growing_times = T)
 plot(tmt, growing_times = T)
 
-compare(tmt, tmt_vanha)
-
+compare(tmt, tmt3)
 
 # col():n ja unsafe_col():n vertailua
 sourceCpp('../test/testia.cpp')
@@ -77,12 +77,17 @@ knn(X_test, x[1, ], k = 8)
 knnCpp(X_test, x[1, ], k = 8)
 knnCppT(X_test_t, x_1_t, k = 8)
 knnCppT_unsafe(X_test_t, x_1_t, k = 8)
-
+knnCppT_each(X_test_t, x_1_t, k = 8)
 
 
 # almost 4 times faster to go through the matrix by cols than rows!
-microbenchmark(knn(X_test, x[1, ], k = 8), knnCpp(X_test, x[1, ], k = 8), knnCppT(X_test_t, x_1_t, k = 8), knnCppT_unsafe(X_test_t, x_1_t, k = 8)) 
+microbenchmark(knn(X_test, x[1, ], k = 8), knnCpp(X_test, x[1, ], k = 8), knnCppT(X_test_t, x_1_t, k = 8), knnCppT_unsafe(X_test_t, x_1_t, k = 8), knnCppT_each(X_test_t, x_1_t, k = 8)) 
 
 
+library(devtools)
 
+install_github("wrathematics/RNACI") ### dependency
+install_github("wrathematics/memuse")
 
+library(memuse)
+Sys.cachesize()

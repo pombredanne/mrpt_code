@@ -121,7 +121,9 @@ test_mrpt <- function(x, X_test, mrpt, k, exact_nn) {
 } 
 
 # compare one mrpts - object to another
-compare <- function(tmt, tmt_old, accuracy = T, times = T, time_exact = T, growing_times = T, times_ratio = T, growing_times_ratio = T ) {
+compare <- function(tmt, tmt_old, accuracy = T, times_true =T, times = T, times_query = T, times_knn = T, time_exact = T, growing_times = T,
+                    times_ratio = T, growing_times_ratio = T) {
+  
   # compare accuracy of the original and the same projection version
   if(accuracy) {
     cat("neighbors found:\n")
@@ -131,9 +133,18 @@ compare <- function(tmt, tmt_old, accuracy = T, times = T, time_exact = T, growi
     }
     cat('\n')
   }
+ 
+  # compare tree query times of the original and the same projection version
+  if(times_true) {
+    cat('true query times in trees:\n')
+    for(i in 1:length(tmt)) {
+      cat("orig: ", tmt_old[[i]]$times_total, '\n')
+      cat("C++: ", tmt[[i]]$times_total, '\n')
+    }
+    cat('\n')
+  }
   
-  
-  # compare query times of the original and the same projection version
+  # compare total query times of the original and the same projection version
   if(times) {
     cat('query times:\n')
     for(i in 1:length(tmt)) {
@@ -142,6 +153,28 @@ compare <- function(tmt, tmt_old, accuracy = T, times = T, time_exact = T, growi
     }
     cat('\n')
   }
+ 
+   
+  # compare tree query times of the original and the same projection version
+  if(times_query) {
+    cat('query times in trees:\n')
+    for(i in 1:length(tmt)) {
+      cat("orig: ", tmt_old[[i]]$times_query, '\n')
+      cat("C++: ", tmt[[i]]$times_query, '\n')
+    }
+    cat('\n')
+  }
+  
+  # compare knn times of the original and the same projection version
+  if(times_knn) {
+    cat('knn times:\n')
+    for(i in 1:length(tmt)) {
+      cat("orig: ", (tmt_old[[i]]$times_knn), '\n')
+      cat("C++: ", (tmt[[i]]$times_knn), '\n')
+    }
+    cat('\n')
+  }
+  
   
   # time for exact knn search
   if(time_exact) {
@@ -161,9 +194,9 @@ compare <- function(tmt, tmt_old, accuracy = T, times = T, time_exact = T, growi
     cat('\n')
   }
   
-  # ratio of query times of the original and the same projection version
+  # ratio of total query times of the original and the same projection version
   if(times_ratio) {
-    cat('ratio of query times:\n')
+    cat('ratio of total query times:\n')
     for(i in 1:length(tmt)) 
       cat("ratio (old/C++): ", (tmt_old[[i]]$times_query + tmt_old[[i]]$times_knn) / (tmt[[i]]$times_query + tmt[[i]]$times_knn), '\n')
     cat('\n')
