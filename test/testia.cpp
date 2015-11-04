@@ -212,5 +212,40 @@ void unsafe(const arma::mat& X, const arma::rowvec& z) {
     arma::vec x = X.unsafe_col(i);
 }
 
+// [[Rcpp::export]]
+void sizes() {
+  using namespace std;
+  cout << "bool:\t\t" << sizeof(bool) << " bytes" << endl;
+  cout << "char:\t\t" << sizeof(char) << " bytes" << endl;
+  cout << "wchar_t:\t" << sizeof(wchar_t) << " bytes" << endl;
+  cout << "char16_t:\t" << sizeof(char16_t) << " bytes" << endl; // C++11, may not be supported by your compiler
+  cout << "char32_t:\t" << sizeof(char32_t) << " bytes" << endl; // C++11, may not be supported by your compiler
+  cout << "short:\t\t" << sizeof(short) << " bytes" << endl;
+  cout << "int:\t\t" << sizeof(int) << " bytes" << endl;
+  cout << "long:\t\t" << sizeof(long) << " bytes" << endl;
+  cout << "long long:\t" << sizeof(long long) << " bytes" << endl; // C++11, may not be supported by your compiler
+  cout << "float:\t\t" << sizeof(float) << " bytes" << endl;
+  cout << "double:\t\t" << sizeof(double) << " bytes" << endl;
+  cout << "long double:\t" << sizeof(long double) << " bytes" << endl;
+}
 
 
+// [[Rcpp::export]]
+void sort_col(arma::uvec col) {
+  arma::uvec ordered = sort_index(col);  
+}
+
+// [[Rcpp::export]]
+void sort_row(arma::urowvec row) {
+  arma::uvec ordered = sort_index(row);  
+}
+
+// [[Rcpp::export]]
+void randn(int rows, int cols) {
+  arma::mat A = arma::randn(rows, cols);
+}
+
+// [[Rcpp::export]]
+void do_nothing(int rows, int cols) {
+  ;
+}

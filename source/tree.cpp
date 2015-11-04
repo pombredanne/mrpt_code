@@ -105,45 +105,8 @@ uvec knnCppT_unsafe(const mat& X, const vec& q, int k) {
 }
 
 
-// find k nearest neighbors from data for the query point
-// X = *transposed* data matrix, row = dimension, col = data point
-// q = query point as a column matrix
-// k = number of neighbors searched for
-// return : indices of nearest neighbors (cols of transposed data matrix X) as a column vector
-// [[Rcpp::export]]
-uvec knnCppT_each(const mat& X, const vec& q, int k) {
-  vec distances = sum(pow(X.each_col() - q, 2), 0);
-  uvec sorted_indices = sort_index(distances);
-  return sorted_indices.subvec(0, k - 1) + 1;
-}
 
 
-
-// Node of an RP-tree
-// class Node {
-// private:
-//   
-// public:
-//   double split_point;  //  split point (0 if this this is a leaf)
-//   int leaf_label;         //  leaf label if this is a leaf
-//   Node* left;          
-//   Node* right;         
-//   
-//   Node() {
-//     split_point = 0.0;
-//     leaf_label = 0;
-//     left = nullptr;
-//     right = nullptr;
-//   }
-//   
-//   ~Node() {
-//     // std::cout << "Poistetaan Node, split point: " << split_point << std::endl;
-//     delete left;
-//     delete right;
-//   }
-// };
-
-// One RP-tree 
 class RP_tree {
 
 public:
@@ -158,11 +121,15 @@ public:
   }
   
 
+
   void grow() {  
     tree = zeros<vec>(pow(2, depth + 1));
     uvec indices = linspace<uvec>(0, n_rows - 1, n_rows);
+    
+    
     grow_subtree(indices, 0, 0);  // all rows of data, level of the tree, first index in the array that stores the tree
   }
+
   
   // Query in a RP-tree
   // projected_query = the query point projected into all vectors of in all the RP-trees
@@ -187,7 +154,7 @@ public:
     return &tree;
   }
   
-  uvec get_leaf_labels() {
+  uvec& get_leaf_labels() {
     return leaf_labels;
   }
   
@@ -201,36 +168,35 @@ private:
   int depth;
   vec tree;
 
-  // Grow an RP-tree recursively 
-  // Arguments:
-  // indices = indices of original data matrix handled
-  // tree_level = which level of the tree we are on
-  void grow_subtree(const uvec &indices, int tree_level, int i) {
-    int n = indices.size();
-    int idx_left = 2 * i + 1;
-    int idx_right = idx_left + 1; 
 
-    if(n <= n_0) {
-      leaf_labels.elem(indices) = zeros<uvec>(n) + i;
-      return;
-    }
-    
-    mat temp = projected_data.cols(indices);
-    rowvec projection = temp.row(first_idx + tree_level);
-    uvec ordered = sort_index(projection);  // indices??
-    
-    int split_point = n % 2 ? n / 2 : n / 2 - 1;  // median split
-    int idx_split_point = ordered(split_point);
-    int idx_split_point2 = ordered(split_point + 1);
-
-    tree[i] = n % 2 ? projection(idx_split_point) : (projection(idx_split_point) + projection(idx_split_point2)) / 2;
-    uvec left_indices = ordered.subvec(0, split_point);
-    uvec right_indices = ordered.subvec(split_point + 1, n - 1);
-    
-    grow_subtree(indices.elem(left_indices), tree_level + 1, idx_left);
-    grow_subtree(indices.elem(right_indices), tree_level + 1, idx_right);
-    
+void grow_subtree(const uvec &indices, int tree_level, int i) {
+  int n = indices.size();
+  int idx_left = 2 * i + 1;
+  int idx_right = idx_left + 1; 
+  
+  if(n <= n_0) {
+    leaf_labels.elem(indices) = zeros<uvec>(n) + i;
+    return;
   }
+  
+  // mat temp = projected_data.cols(indices);
+  // rowvec projection = temp.row(first_idx + tree_level);
+  uvec level = {first_idx + tree_level};
+  rowvec projection = projected_data(level, indices);
+  uvec ordered = sort_index(projection);  // indices??
+  
+  int split_point = n % 2 ? n / 2 : n / 2 - 1;  // median split
+  int idx_split_point = ordered(split_point);
+  int idx_split_point2 = ordered(split_point + 1);
+  
+  tree[i] = n % 2 ? projection(idx_split_point) : (projection(idx_split_point) + projection(idx_split_point2)) / 2;
+  uvec left_indices = ordered.subvec(0, split_point);
+  uvec right_indices = ordered.subvec(split_point + 1, n - 1);
+  
+  grow_subtree(indices.elem(left_indices), tree_level + 1, idx_left);
+  grow_subtree(indices.elem(right_indices), tree_level + 1, idx_right);
+  
+}
 
 
 };
@@ -282,7 +248,7 @@ public:
     std::vector<int> idx_canditates(n_trees * n_0);
     
     for(int i = 0; i < n_trees; i++) {
-      uvec leaf_labels = trees[i]->get_leaf_labels();
+      const uvec& leaf_labels = trees[i]->get_leaf_labels();
       uword query_label = trees[i]->query(projected_query);
       uvec idx_one_tree =  find(leaf_labels == query_label);
       idx_canditates.insert(idx_canditates.begin(), idx_one_tree.begin(), idx_one_tree.end());
@@ -300,7 +266,7 @@ public:
     std::vector<int> idx_canditates(n_trees * n_0);
     
     for(int i = 0; i < n_trees; i++) {
-      uvec leaf_labels = trees[i]->get_leaf_labels();
+      const uvec& leaf_labels = trees[i]->get_leaf_labels();
       uword query_label = trees[i]->query(projected_query);
       uvec idx_one_tree =  find(leaf_labels == query_label);
       idx_canditates.insert(idx_canditates.begin(), idx_one_tree.begin(), idx_one_tree.end()) ;
@@ -308,12 +274,14 @@ public:
     
     auto last = std::unique(idx_canditates.begin(), idx_canditates.end());
     idx_canditates.erase(last, idx_canditates.end());
-      
-    return  conv_to<uvec>::from(idx_canditates);
+    vec_idx_canditates = conv_to<uvec>::from(idx_canditates);  
+    return  vec_idx_canditates;
   }
 
   
-
+  void matrix_multiplication(const vec& q) { 
+    vec projected_query = random_matrix * q;
+  }
     
   RP_tree** get_trees() {
     return trees;
@@ -331,6 +299,7 @@ private:
   mat random_matrix;    // random vectors needed for all the RP-trees
   mat projected_data;   // data matrix projected onto all the random vectors
   RP_tree** trees;      // all the RP-trees
+  uvec vec_idx_canditates;
 };
 
 class Contour {
@@ -379,27 +348,34 @@ public:
     times_query = std::vector<double>(n_mrpts);
     times_knn = std::vector<double>(n_mrpts);
     times_total = std::vector<double>(n_mrpts);
+    times_multi = std::vector<double>(n_mrpts);
     
     for(int i = 0; i < n_mrpts; i++) {
       Mrpt* mrpt = mrpts[i];
       
       clock_t begin = clock();
       for(int j = 0; j < n_points; j++) 
-        idx_canditates[j] = mrpt->query_canditates(Q.col(j), k);
+        idx_canditates[j] = mrpt->query_canditates(Q.unsafe_col(j), k);
       clock_t end = clock();
       times_query[i] = (end - begin) / static_cast<double>(CLOCKS_PER_SEC);
       
       begin = clock();
       for(int j = 0; j < n_points; j++)
-        approximate_knn[j] = knnCpp_T_indices(X, Q.col(j), k, idx_canditates[j]);
+        approximate_knn[j] = knnCpp_T_indices(X, Q.unsafe_col(j), k, idx_canditates[j]);
       end = clock();
       times_knn[i] = (end - begin) / static_cast<double>(CLOCKS_PER_SEC);
       
       begin = clock();
       for(int j = 0; j < n_points; j++)
-        mrpt->query(Q.col(j), k);
+        mrpt->query(Q.unsafe_col(j), k);
       end = clock();
       times_total[i] = (end - begin) / static_cast<double>(CLOCKS_PER_SEC);
+      
+      begin = clock();
+      for(int j = 0; j < n_points; j++)
+        mrpt->matrix_multiplication(Q.unsafe_col(j));
+      end = clock();
+      times_multi[i] = (end - begin) / static_cast<double>(CLOCKS_PER_SEC);
       
       
       for(int j = 0; j < n_points; j++) {
@@ -428,7 +404,8 @@ public:
       Rcpp::_["n_points"] = n_points,
       Rcpp::_["times_matrix"] = times_matrix,
       Rcpp::_["times_trees"] = times_trees,
-      Rcpp::_["times_total"] = times_total
+      Rcpp::_["times_total"] = times_total,
+      Rcpp::_["times_multi"] = times_multi
     );
     
     ret.attr("class") = "contour"; 
@@ -452,6 +429,7 @@ private:
   int n_points;  // number of test points
   std::vector<double> times_matrix;
   std::vector<double> times_trees;
+  std::vector<double> times_multi;
 };
 
 

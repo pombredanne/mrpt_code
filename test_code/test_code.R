@@ -122,7 +122,7 @@ test_mrpt <- function(x, X_test, mrpt, k, exact_nn) {
 
 # compare one mrpts - object to another
 compare <- function(tmt, tmt_old, accuracy = T, times_true =T, times = T, times_query = T, times_knn = T, time_exact = T, growing_times = T,
-                    times_ratio = T, growing_times_ratio = T) {
+                    times_ratio = T, growing_times_ratio = T, times_multi = T) {
   
   # compare accuracy of the original and the same projection version
   if(accuracy) {
@@ -136,7 +136,7 @@ compare <- function(tmt, tmt_old, accuracy = T, times_true =T, times = T, times_
  
   # compare tree query times of the original and the same projection version
   if(times_true) {
-    cat('true query times in trees:\n')
+    cat('true query times:\n')
     for(i in 1:length(tmt)) {
       cat("orig: ", tmt_old[[i]]$times_total, '\n')
       cat("C++: ", tmt[[i]]$times_total, '\n')
@@ -164,6 +164,17 @@ compare <- function(tmt, tmt_old, accuracy = T, times_true =T, times = T, times_
     }
     cat('\n')
   }
+  
+  # compare matrix multiplication times in query of the original and the same projection version
+  if(times_multi) {
+    cat('matrix multiplication times in queries in trees:\n')
+    for(i in 1:length(tmt)) {
+      cat("orig: ", tmt_old[[i]]$times_multi, '\n')
+      cat("C++: ", tmt[[i]]$times_multi, '\n')
+    }
+    cat('\n')
+  }
+  
   
   # compare knn times of the original and the same projection version
   if(times_knn) {
@@ -210,6 +221,7 @@ compare <- function(tmt, tmt_old, accuracy = T, times_true =T, times = T, times_
       cat("ratio (old/C++): ", tmt_old[[i]]$growing_times / tmt[[i]]$growing_times, '\n')
     cat('\n')
   }
+  
   
 }
 

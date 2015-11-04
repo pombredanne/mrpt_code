@@ -10,7 +10,6 @@
 # install.packages("microbenchmark")
 # install.packages("RcppArmadillo")
 
-
 library(Rcpp)
 library(microbenchmark)
 library(RcppArmadillo)
@@ -22,7 +21,7 @@ source('../test_code/test_code_plot2.R')
 
 
 # load mnist data
-n_train <- 2^12
+n_train <- 2^15
 mnist <- loadmnist()
 X_mnist <- mnist$X[1:(n_train + 100), ]
 x_idx <- 1:100
@@ -34,7 +33,7 @@ n_0 <- 8
 k <- 8
 set.seed(667)
 min_S <- 3
-max_S <- 9
+max_S <- 10
 min_leaf <- 3
 
 # build contours of trees for data set X_test
@@ -46,6 +45,7 @@ system.time(tmt_r <- test_contours(x, X_test, rp3, k))
 # test C++ version
 sourceCpp('../source/tree.cpp')
 tmt <- test_contoursCpp(t(X_test), min_S, max_S, min_leaf, t(x), k)
+tmt[[8]]
 
 
 
@@ -53,13 +53,14 @@ tmt <- test_contoursCpp(t(X_test), min_S, max_S, min_leaf, t(x), k)
 plot(tmt)
 plot(tmt_old)
 
-plot(tmt, times = T, per_point = T)
+plot(tmt, times = T)
 plot(tmt_old, times = T)
 
 plot(tmt_old, growing_times = T)
 plot(tmt, growing_times = T)
 
-compare(tmt, tmt3)
+compare(tmt, tmt_old)
+
 
 # col():n ja unsafe_col():n vertailua
 sourceCpp('../test/testia.cpp')
@@ -68,7 +69,7 @@ dim <- 784
 Z <- matrix(rnorm(n_row * dim), nrow = n_row)
 z <- rnorm(n_row)
 microbenchmark(safe(Z, z), unsafe(Z, z))
-
+sizes()
 
 # knn-searchin nopeuden testailua
 X_test_t <- t(X_test)
@@ -79,15 +80,16 @@ knnCppT(X_test_t, x_1_t, k = 8)
 knnCppT_unsafe(X_test_t, x_1_t, k = 8)
 knnCppT_each(X_test_t, x_1_t, k = 8)
 
+tmt[[8]]$times_query / tmt[[8]]$times_trees
+
 
 # almost 4 times faster to go through the matrix by cols than rows!
 microbenchmark(knn(X_test, x[1, ], k = 8), knnCpp(X_test, x[1, ], k = 8), knnCppT(X_test_t, x_1_t, k = 8), knnCppT_unsafe(X_test_t, x_1_t, k = 8), knnCppT_each(X_test_t, x_1_t, k = 8)) 
 
 
-library(devtools)
+microbenchmark(randn(12 * 64, 784))
+microbenchmark(do_nothing(12 * 64, 784))
 
-install_github("wrathematics/RNACI") ### dependency
-install_github("wrathematics/memuse")
 
 library(memuse)
 Sys.cachesize()
