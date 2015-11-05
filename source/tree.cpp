@@ -88,121 +88,6 @@ uvec knnCppT(const mat& X, const vec& q, int k) {
   return sorted_indices.subvec(0, k - 1) + 1;
 }
 
-// find k nearest neighbors from data for the query point
-// X = *transposed* data matrix, row = dimension, col = data point
-// q = query point as a column matrix
-// k = number of neighbors searched for
-// return : indices of nearest neighbors (cols of transposed data matrix X) as a column vector
-// [[Rcpp::export]]
-uvec knnCppT_unsafe(const mat& X, const vec& q, int k) {
-  int n_cols = X.n_cols;
-  vec distances = vec(n_cols);
-  for(int i = 0; i < n_cols; i++)
-    distances[i] = sum(pow((X.unsafe_col(i) - q), 2));
-  
-  uvec sorted_indices = sort_index(distances);
-  return sorted_indices.subvec(0, k - 1) + 1;
-}
-
-
-
-
-class RP_tree {
-
-public:
-  RP_tree(const mat& projected, int n_tree, int n_stop) : projected_data(projected), current_leaf_label(1), n_0(n_stop) {
-    n_rows = projected_data.n_cols;  // X is transposed
-    depth = ceil(log2(n_rows / n_0));
-    first_idx = n_tree * depth;
-    leaf_labels = zeros<uvec>(n_rows);
-  }
-  
-  ~RP_tree() {
-  }
-  
-
-
-  void grow() {  
-    tree = zeros<vec>(pow(2, depth + 1));
-    uvec indices = linspace<uvec>(0, n_rows - 1, n_rows);
-    
-    
-    grow_subtree(indices, 0, 0);  // all rows of data, level of the tree, first index in the array that stores the tree
-  }
-
-  
-  // Query in a RP-tree
-  // projected_query = the query point projected into all vectors of in all the RP-trees
-  // return : label of the leaf the query point is routed into in this RP-tree
-  int query(const vec& projected_query) {
-    double split_point = tree[0];
-    int i = first_idx;
-    int idx_left, idx_right, idx_tree = 0;
-
-    while(split_point) {
-      idx_left = 2 * idx_tree + 1;
-      idx_right = idx_left + 1;
-      idx_tree = projected_query(i++) <= split_point ? idx_left : idx_right;   
-      split_point = tree[idx_tree];
-    }  
-    
-    return idx_tree;     
-  }
-  
-  
-  vec* get_tree() {
-    return &tree;
-  }
-  
-  uvec& get_leaf_labels() {
-    return leaf_labels;
-  }
-  
-private:
-  const mat& projected_data;  // data matrix projected into random vectors
-  uword current_leaf_label;  // counter for leaf labels
-  uvec leaf_labels;          // container for leaf_labels of the original data points
-  uword first_idx;        // first col index of this tree in the projected_data
-  int n_0;                // maximum leaf size
-  int n_rows;
-  int depth;
-  vec tree;
-
-
-void grow_subtree(const uvec &indices, int tree_level, int i) {
-  int n = indices.size();
-  int idx_left = 2 * i + 1;
-  int idx_right = idx_left + 1; 
-  
-  if(n <= n_0) {
-    leaf_labels.elem(indices) = zeros<uvec>(n) + i;
-    return;
-  }
-  
-  // mat temp = projected_data.cols(indices);
-  // rowvec projection = temp.row(first_idx + tree_level);
-  uvec level = {first_idx + tree_level};
-  rowvec projection = projected_data(level, indices);
-  uvec ordered = sort_index(projection);  // indices??
-  
-  int split_point = n % 2 ? n / 2 : n / 2 - 1;  // median split
-  int idx_split_point = ordered(split_point);
-  int idx_split_point2 = ordered(split_point + 1);
-  
-  tree[i] = n % 2 ? projection(idx_split_point) : (projection(idx_split_point) + projection(idx_split_point2)) / 2;
-  uvec left_indices = ordered.subvec(0, split_point);
-  uvec right_indices = ordered.subvec(split_point + 1, n - 1);
-  
-  grow_subtree(indices.elem(left_indices), tree_level + 1, idx_left);
-  grow_subtree(indices.elem(right_indices), tree_level + 1, idx_right);
-  
-}
-
-
-};
-
-
-
 class Mrpt {
 public:
   
@@ -211,19 +96,19 @@ public:
     dim = X.n_rows;
     depth = ceil(log2(n_rows / n_0));
     n_pool = n_trees * depth;
-    trees = nullptr;
+    n_array = pow(2, depth + 1);
   }
   
   ~Mrpt() {
-    if(trees)
-      for(int i = 0; i < n_trees; i++)
-        delete trees[i];
-    delete[] trees;
   }
   
   std::vector<double> grow() {
+    trees = zeros<mat>(n_array, n_trees);
+    leaf_labels = umat(n_rows, n_trees);
     std::vector<double> times(2);
-    trees = new RP_tree*[n_trees];
+    uvec indices = linspace<uvec>(0, n_rows - 1, n_rows);
+    
+    // generate the random matrix and project the data set onto it 
     clock_t begin = clock();
     random_matrix = randn(n_pool, dim);
     projected_data = random_matrix * X;
@@ -232,13 +117,16 @@ public:
     clock_t end = clock();
     times[0] = (end - begin) / static_cast<double>(CLOCKS_PER_SEC);
     
+    // grow the trees
     begin = clock();
-    for(int i = 0; i < n_trees; i++) {
-      trees[i] = new RP_tree(projected_data, i, n_0);
-      trees[i]->grow();
-    }
+    for(int n_tree = 0; n_tree < n_trees; n_tree++){
+      first_idx = n_tree * depth;
+      grow_subtree(indices, 0, 0, n_tree);  // all rows of data, 0 = level of the tree, 0 = first index in the array that stores the tree, n_tree:th tree
+      
+    } 
     end = clock();
     times[1] = (end - begin) / static_cast<double>(CLOCKS_PER_SEC);
+    
     return times;
   }
   
@@ -246,12 +134,26 @@ public:
   uvec query(const vec& q, int k) { 
     vec projected_query = random_matrix * q;   // query vector q is passed as a reference to a col vector
     std::vector<int> idx_canditates(n_trees * n_0);
+    int j = 0;
     
-    for(int i = 0; i < n_trees; i++) {
-      const uvec& leaf_labels = trees[i]->get_leaf_labels();
-      uword query_label = trees[i]->query(projected_query);
-      uvec idx_one_tree =  find(leaf_labels == query_label);
-      idx_canditates.insert(idx_canditates.begin(), idx_one_tree.begin(), idx_one_tree.end());
+    
+    for(int n_tree = 0; n_tree < n_trees; n_tree++) {
+      const uvec& col_leaf_labels = leaf_labels.unsafe_col(n_tree);
+      const vec& tree = trees.unsafe_col(n_tree);
+      
+      double split_point = tree[0];
+      int idx_left, idx_right;
+      int idx_tree = 0;
+      
+      while(split_point) {
+        idx_left = 2 * idx_tree + 1;
+        idx_right = idx_left + 1;
+        idx_tree = projected_query(j++) <= split_point ? idx_left : idx_right;   
+        split_point = tree[idx_tree];
+      }  
+      
+      uvec idx_one_tree =  find(col_leaf_labels == idx_tree);
+      idx_canditates.insert(idx_canditates.begin(), idx_one_tree.begin(), idx_one_tree.end()) ;
     }
     
     auto last = std::unique(idx_canditates.begin(), idx_canditates.end());
@@ -260,22 +162,41 @@ public:
     return knnCpp_T_indices(X, q, k, conv_to<uvec>::from(idx_canditates));
   }
   
-  
   uvec query_canditates(const vec& q, int k) { 
     vec projected_query = random_matrix * q;   // query vector q is passed as a reference to a col vector
     std::vector<int> idx_canditates(n_trees * n_0);
+    int j = 0;
     
-    for(int i = 0; i < n_trees; i++) {
-      const uvec& leaf_labels = trees[i]->get_leaf_labels();
-      uword query_label = trees[i]->query(projected_query);
-      uvec idx_one_tree =  find(leaf_labels == query_label);
+    // std::cout << "projected_query.size(): " << projected_query.size() << ", idx_canditates.size(): " << idx_canditates.size() << std::endl;
+    for(int n_tree = 0; n_tree < n_trees; n_tree++) {
+      // std::cout << "n_tree: " << n_tree << ", n_trees: " << n_trees << ", j: " << j << std::endl; 
+      
+      const uvec& col_leaf_labels = leaf_labels.unsafe_col(n_tree);
+      const vec& tree = trees.unsafe_col(n_tree);
+      
+      // std::cout << "tree[0]: " << tree[0] << std::endl;
+      
+      double split_point = tree[0];
+      int idx_left, idx_right;
+      int idx_tree = 0;
+      
+      while(split_point) {
+        idx_left = 2 * idx_tree + 1;
+        idx_right = idx_left + 1;
+        idx_tree = projected_query(j++) <= split_point ? idx_left : idx_right;   
+        split_point = tree[idx_tree];
+        // std::cout << "idx_left: " << idx_left << ", idx_right: " << idx_right << ", split_point: " << split_point << std::endl;
+        // bool temp = split_point == 0;
+        // std::cout << "split_point == 0: " <<  temp << std::endl; 
+      }  
+      
+      uvec idx_one_tree =  find(col_leaf_labels == idx_tree);
       idx_canditates.insert(idx_canditates.begin(), idx_one_tree.begin(), idx_one_tree.end()) ;
     }
     
     auto last = std::unique(idx_canditates.begin(), idx_canditates.end());
     idx_canditates.erase(last, idx_canditates.end());
-    vec_idx_canditates = conv_to<uvec>::from(idx_canditates);  
-    return  vec_idx_canditates;
+    return  conv_to<uvec>::from(idx_canditates);
   }
 
   
@@ -283,12 +204,38 @@ public:
     vec projected_query = random_matrix * q;
   }
     
-  RP_tree** get_trees() {
-    return trees;
-  }
   
   
 private:
+  void grow_subtree(const uvec &indices, int tree_level, int i, uword n_tree) {
+    int n = indices.size();
+    int idx_left = 2 * i + 1;
+    int idx_right = idx_left + 1; 
+    
+    if(n <= n_0) {
+      uvec idx_tree = {n_tree};
+      leaf_labels(indices, idx_tree) = zeros<uvec>(n) + i;
+      return;
+    }
+    
+    uvec level = {first_idx + tree_level};
+    rowvec projection = projected_data(level, indices);
+    uvec ordered = sort_index(projection);  // indices??
+    
+    int split_point = n % 2 ? n / 2 : n / 2 - 1;  // median split
+    int idx_split_point = ordered(split_point);
+    int idx_split_point2 = ordered(split_point + 1);
+    
+    trees(i, n_tree) = n % 2 ? projection(idx_split_point) : (projection(idx_split_point) + projection(idx_split_point2)) / 2;
+    uvec left_indices = ordered.subvec(0, split_point);
+    uvec right_indices = ordered.subvec(split_point + 1, n - 1);
+    
+    grow_subtree(indices.elem(left_indices), tree_level + 1, idx_left, n_tree);
+    grow_subtree(indices.elem(right_indices), tree_level + 1, idx_right, n_tree);
+    
+  }
+  
+  
   mat X;        // data matrix, col = observation, row = dimension
   int n_trees;  // number of RP-trees
   int n_0;      // maximum leaf size of all the RP-trees
@@ -298,9 +245,13 @@ private:
   int n_pool;   // amount of random vectors needed for all the RP-trees
   mat random_matrix;    // random vectors needed for all the RP-trees
   mat projected_data;   // data matrix projected onto all the random vectors
-  RP_tree** trees;      // all the RP-trees
-  uvec vec_idx_canditates;
+  mat trees;            // all the RP-trees, col = tree, row = node
+  umat leaf_labels;     // leaf labels of all the data points, col = tree, row = data point
+  int n_array;          // length of the one RP-tree as array
+  uword first_idx;        // first col index of this tree in the projected_data
 };
+
+
 
 class Contour {
 public:

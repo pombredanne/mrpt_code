@@ -45,8 +45,6 @@ system.time(tmt_r <- test_contours(x, X_test, rp3, k))
 # test C++ version
 sourceCpp('../source/tree.cpp')
 tmt <- test_contoursCpp(t(X_test), min_S, max_S, min_leaf, t(x), k)
-tmt[[8]]
-
 
 
 # plot knn found against #trees T with different search space sizes 
@@ -61,6 +59,7 @@ plot(tmt, growing_times = T)
 
 compare(tmt, tmt_old)
 
+tmt_old[[8]]
 
 # col():n ja unsafe_col():n vertailua
 sourceCpp('../test/testia.cpp')
@@ -81,7 +80,6 @@ knnCppT_unsafe(X_test_t, x_1_t, k = 8)
 knnCppT_each(X_test_t, x_1_t, k = 8)
 
 tmt[[8]]$times_query / tmt[[8]]$times_trees
-
 
 # almost 4 times faster to go through the matrix by cols than rows!
 microbenchmark(knn(X_test, x[1, ], k = 8), knnCpp(X_test, x[1, ], k = 8), knnCppT(X_test_t, x_1_t, k = 8), knnCppT_unsafe(X_test_t, x_1_t, k = 8), knnCppT_each(X_test_t, x_1_t, k = 8)) 
